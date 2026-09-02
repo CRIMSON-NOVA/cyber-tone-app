@@ -336,6 +336,7 @@ async def root_endpoint():
 
 
 @app.get("/health")
+@app.get("/healthz")
 async def health_check():
     return {
         "status": "ok",
@@ -344,6 +345,7 @@ async def health_check():
         "detectors": DETECTOR_MODEL_NAMES,
         "websocket_endpoint": "/ws/detect",
     }
+
 
 
 if __name__ == "__main__":
