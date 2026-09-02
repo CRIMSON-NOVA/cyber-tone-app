@@ -54,10 +54,7 @@ def load_detector(model_name: str):
     to run smoothly within lightweight memory footprints."""
     logger.info(f"Loading {model_name} on {DEVICE} (optimized memory mode)...")
     extractor = AutoFeatureExtractor.from_pretrained(model_name)
-    mdl = AutoModelForAudioClassification.from_pretrained(
-        model_name,
-        low_cpu_mem_usage=True
-    ).to(DEVICE)
+    mdl = AutoModelForAudioClassification.from_pretrained(model_name).to(DEVICE)
     mdl.eval()
 
     # Apply 8-bit dynamic quantization to linear layers (reduces RAM from ~380MB to ~95MB)
