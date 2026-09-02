@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CYBER TONE - Real-Time AI Voice Impersonation Detector</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #0b1120; color: #f8fafc; text-align: center; padding: 40px 16px; }
+        .card { background: #1e293b; max-width: 640px; margin: 0 auto; padding: 30px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
+        h1 { font-size: 24px; margin-bottom: 8px; }
+        .subtitle { color: #94a3b8; font-size: 14px; margin-bottom: 24px; }
+        .badge { display: inline-block; padding: 12px 28px; border-radius: 30px; font-weight: 700; font-size: 18px; margin: 20px 0; }
+        .authentic { background: #15803d; color: #dcfce7; }
+        .suspicious { background: #b45309; color: #fef3c7; }
+        .cloned { background: #b91c1c; color: #fee2e2; animation: pulse 1s infinite; }
+        .silence { background: #334155; color: #94a3b8; }
+        .paused { background: #334155; color: #cbd5e1; border: 1px dashed #64748b; }
+        .error { background: #7c2d12; color: #fed7aa; }
+        .meter-container { background: #0f172a; border-radius: 10px; height: 26px; overflow: hidden; margin: 20px 0; padding: 3px; }
+        .meter-fill { height: 100%; width: 0%; border-radius: 8px; transition: width 0.3s ease, background-color 0.3s ease; }
+        .btn-row { display: flex; justify-content: center; gap: 12px; margin-bottom: 15px; flex-wrap: wrap; }
+        button { background: #2563eb; border: none; padding: 12px 24px; color: white; font-size: 15px; border-radius: 8px; cursor: pointer; font-weight: 600; transition: background 0.2s; }
+        button:hover { background: #1d4ed8; }
+        button.stop { background: #dc2626; }
+        button.file-btn { background: #475569; }
+        button.file-btn:hover { background: #334155; }
+        button:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+        .stats { color: #64748b; font-size: 12px; margin-top: 15px; }
+        .calib-panel { margin-top: 24px; padding-top: 20px; border-top: 1px solid #334155; text-align: left; }
+        .calib-title { font-size: 13px; font-weight: 700; color: #94a3b8; margin-bottom: 10px; letter-spacing: 0.5px; text-transform: uppercase; }
+        .calib-bar-container { position: relative; background: #0f172a; border-radius: 6px; height: 18px; overflow: visible; margin-bottom: 6px; }
+        .calib-bar-fill { height: 100%; width: 0%; border-radius: 6px; background: #38bdf8; transition: width 0.1s linear; }
+        .calib-threshold-marker { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #f87171; }
+        .calib-row { display: flex; justify-content: space-between; font-size: 12px; color: #cbd5e1; margin-bottom: 4px; font-family: monospace; }
+        .calib-suggestion { font-size: 12px; color: #4ade80; margin-top: 10px; font-family: monospace; }
+        .calib-hint { font-size: 11px; color: #64748b; margin-top: 8px; }
+        .config-panel { margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid #334155; text-align: left; }
+        .config-panel label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
+        .config-row { display: flex; gap: 8px; }
+        .config-row input { flex: 1; background: #0f172a; border: 1px solid #334155; color: #f8fafc; padding: 10px 12px; border-radius: 8px; font-family: monospace; font-size: 13px; }
+        .config-row input:focus { outline: none; border-color: #2563eb; }
+        .config-row button { padding: 10px 18px; font-size: 13px; }
+        .config-status { font-size: 12px; margin-top: 8px; color: #64748b; }
+        .config-status.ok { color: #4ade80; }
+        .config-status.bad { color: #f87171; }
+        .file-upload-section { margin: 15px 0 20px 0; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🎙️ CYBER TONE</h1>
+        <div class="subtitle">Real-Time Voice Impersonation & Deepfake Defense</div>
+
+        <div class="config-panel">
+            <label for="backendUrlInput">Backend WebSocket URL</label>
+            <div class="config-row">
+                <input id="backendUrlInput" type="text" placeholder="wss://your-backend.onrender.com/ws/detect" />
+                <button id="saveBackendBtn" onclick="saveBackendUrl()">Save</button>
+            </div>
+            <div id="configStatus" class="config-status">Enter your deployed backend's WebSocket URL once — it's saved in this browser.</div>
+        </div>
+
+        <div class="btn-row">
+            <button id="toggleBtn" onclick="toggleStream()">Start Microphone</button>
+            <button id="fileBtn" class="file-btn" onclick="document.getElementById('audioFileInput').click()">Test Audio File</button>
+            <input id="audioFileInput" type="file" accept="audio/*" style="display: none;" onchange="handleFileUpload(event)" />
+        </div>
+
+        <div id="badge" class="badge silence" style="display: none;">STANDBY</div>
+
+        <div class="meter-container">
+            <div id="meter" class="meter-fill" style="background: #22c55e;"></div>
+        </div>
+        <p id="scoreLabel" style="font-weight: 600;">Spoof Risk: 0.0%</p>
+        <p id="actionLabel" style="color: #94a3b8;">Action: System Ready</p>
+        <div id="modelBreakdown" class="stats" style="margin-top: -8px;"></div>
+        <div id="stats" class="stats">Audio Level: 0.000 | Packets Sent: 0 | Packets Recv: 0</div>
+
+        <div class="calib-panel">
+            <div class="calib-title">🎚️ Audio Calibration</div>
+            <div class="calib-bar-container">
+                <div id="calibBarFill" class="calib-bar-fill"></div>
+                <div id="calibThresholdMarker" class="calib-threshold-marker" style="left: 0%;"></div>
+            </div>
+            <div class="calib-row"><span>Live RMS</span><span id="calibLiveRms">0.0000</span></div>
+            <div class="calib-row"><span>Current threshold</span><span id="calibThresholdVal">0.0000</span></div>
+            <div class="calib-row"><span>Noise floor (max while paused)</span><span id="calibNoiseFloor">–</span></div>
+            <div class="calib-row"><span>Speech min (while talking)</span><span id="calibSpeechMin">–</span></div>
+            <div id="calibSuggestion" class="calib-suggestion"></div>
+            <div class="calib-hint">Red line = backend's SILENCE_RMS_THRESHOLD. Audio below this threshold is treated as paused.</div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let audioContext = null;
+        let processor = null;
+        let mediaStream = null;
+        let isStreaming = false;
+        let isFilePlaying = false;
+        let filePlaybackInterval = null;
+        let sentCount = 0;
+        let recvCount = 0;
+
+        const CALIB_BAR_MAX = 0.05;
+        let noiseFloorMax = null;
+        let speechMinObserved = null;
+
+        // ---------- Backend URL configuration ----------
+        const STORAGE_KEY = "cybertone_backend_ws_url";
+
+        function getDefaultWebSocketUrl() {
+            if (window.location.protocol === "http:" || window.location.protocol === "https:") {
+                const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
+                const host = window.location.hostname || "127.0.0.1";
+                const port = window.location.port;
+                if (port === "8000") {
+                    return `${wsProto}//${host}:${port}/ws/detect`;
+                }
+                if (port === "3000" || port === "5500" || port === "5173") {
+                    return `${wsProto}//${host}:8000/ws/detect`;
+                }
+                if (port) {
+                    return `${wsProto}//${host}:${port}/ws/detect`;
+                }
+                return `${wsProto}//${window.location.host}/ws/detect`;
+            }
+            return "ws://127.0.0.1:8000/ws/detect";
+        }
+
+        function getBackendUrl() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved && saved.trim()) {
+                return saved.trim();
+            }
+            return getDefaultWebSocketUrl();
+        }
+
+        function saveBackendUrl() {
+            const input = document.getElementById("backendUrlInput");
+            const url = input.value.trim();
+            const statusEl = document.getElementById("configStatus");
+
+            if (!url) {
+                statusEl.className = "config-status bad";
+                statusEl.innerText = "Enter a WebSocket URL first (starts with wss:// or ws://).";
+                return;
+            }
+            if (!url.startsWith("ws://") && !url.startsWith("wss://")) {
+                statusEl.className = "config-status bad";
+                statusEl.innerText = "URL must start with ws:// or wss://";
+                return;
+            }
+
+            localStorage.setItem(STORAGE_KEY, url);
+            statusEl.className = "config-status ok";
+            statusEl.innerText = "Saved. Click \"Start Microphone\" or \"Test Audio File\" to connect.";
+        }
+
+        window.addEventListener("DOMContentLoaded", () => {
+            const params = new URLSearchParams(window.location.search);
+            const fromQuery = params.get("backend");
+            if (fromQuery) {
+                localStorage.setItem(STORAGE_KEY, fromQuery);
+            }
+            const activeUrl = getBackendUrl();
+            document.getElementById("backendUrlInput").value = activeUrl;
+            document.getElementById("configStatus").className = "config-status ok";
+            document.getElementById("configStatus").innerText = `Ready (Backend: ${activeUrl})`;
+        });
+
+        // ---------- Audio Downsample Filter (16 kHz) ----------
+        function downsampleBuffer(buffer, inputSampleRate, outputSampleRate = 16000) {
+            if (inputSampleRate === outputSampleRate) {
+                return buffer;
+            }
+            if (inputSampleRate < outputSampleRate) {
+                return buffer;
+            }
+            const sampleRateRatio = inputSampleRate / outputSampleRate;
+            const newLength = Math.round(buffer.length / sampleRateRatio);
+            const result = new Float32Array(newLength);
+            let offsetResult = 0;
+            let offsetBuffer = 0;
+            while (offsetResult < result.length) {
+                const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+                let accum = 0, count = 0;
+                for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+                    accum += buffer[i];
+                    count++;
+                }
+                result[offsetResult] = count > 0 ? accum / count : 0;
+                offsetResult++;
+                offsetBuffer = nextOffsetBuffer;
+            }
+            return result;
+        }
+
+        // ---------- Streaming ----------
+        function initWebSocket(onReady) {
+            const backendUrl = getBackendUrl();
+            if (!backendUrl) {
+                alert("Set your backend WebSocket URL above first (e.g. ws://127.0.0.1:8000/ws/detect).");
+                return null;
+            }
+
+            sentCount = 0;
+            recvCount = 0;
+            noiseFloorMax = null;
+            speechMinObserved = null;
+            document.getElementById("calibNoiseFloor").innerText = "–";
+            document.getElementById("calibSpeechMin").innerText = "–";
+            document.getElementById("calibSuggestion").innerText = "";
+
+            const socket = new WebSocket(backendUrl);
+            socket.binaryType = "arraybuffer";
+
+            socket.onopen = () => {
+                const badge = document.getElementById("badge");
+                badge.className = "badge authentic";
+                badge.innerText = "CONNECTED";
+                badge.style.display = "inline-block";
+                if (onReady) onReady();
+            };
+
+            socket.onmessage = (event) => {
+                recvCount++;
+                try {
+                    const data = JSON.parse(event.data);
+                    updateUI(data);
+                } catch (e) {
+                    console.error("Error parsing message from backend:", e);
+                }
+            };
+
+            socket.onerror = (e) => {
+                console.error("WebSocket error:", e);
+                const badge = document.getElementById("badge");
+                badge.className = "badge error";
+                badge.innerText = "CONNECTION ERROR — check backend URL";
+                badge.style.display = "inline-block";
+            };
+
+            socket.onclose = (e) => {
+                if (isStreaming || isFilePlaying) {
+                    const badge = document.getElementById("badge");
+                    badge.className = "badge error";
+                    badge.innerText = e.code === 4401 ? "UNAUTHORIZED — token required" : "CONNECTION CLOSED";
+                }
+            };
+
+            return socket;
+        }
+
+        async function toggleStream() {
+            if (!isStreaming) {
+                if (isFilePlaying) stopFileTest();
+                await startStreaming();
+            } else {
+                stopStreaming();
+            }
+        }
+
+        async function startStreaming() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert("Microphone access is not supported or blocked in this browser context.\n\nPlease open the app via http://localhost:8000 or http://127.0.0.1:8000.");
+                return;
+            }
+
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: false, autoGainControl: true }
+                });
+            } catch (err) {
+                alert("Microphone access failed: " + err.message + "\n\nPlease allow microphone access in your browser settings.");
+                return;
+            }
+
+            ws = initWebSocket(async () => {
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    if (audioContext.state === "suspended") {
+                        await audioContext.resume();
+                    }
+
+                    const source = audioContext.createMediaStreamSource(mediaStream);
+                    processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                    processor.onaudioprocess = (e) => {
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            const inputData = e.inputBuffer.getChannelData(0);
+                            const resampled = downsampleBuffer(inputData, audioContext.sampleRate, 16000);
+                            const pcm16 = new Int16Array(resampled.length);
+                            for (let i = 0; i < resampled.length; i++) {
+                                let s = Math.max(-1, Math.min(1, resampled[i]));
+                                pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                            }
+                            ws.send(pcm16.buffer);
+                            sentCount++;
+                        }
+                    };
+
+                    // Silent gain node avoids mic echoing through speakers
+                    const muteNode = audioContext.createGain();
+                    muteNode.gain.value = 0;
+
+                    source.connect(processor);
+                    processor.connect(muteNode);
+                    muteNode.connect(audioContext.destination);
+
+                    document.getElementById("toggleBtn").innerText = "Stop Microphone";
+                    document.getElementById("toggleBtn").className = "stop";
+                    document.getElementById("badge").style.display = "inline-block";
+                    isStreaming = true;
+                } catch (audioErr) {
+                    console.error("Audio initialization error:", audioErr);
+                    alert("Audio processing initialization failed: " + audioErr.message);
+                    stopStreaming();
+                }
+            });
+        }
+
+        function stopStreaming() {
+            isStreaming = false;
+
+            if (processor) processor.disconnect();
+            if (audioContext) audioContext.close();
+            if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
+            if (ws) ws.close();
+
+            document.getElementById("toggleBtn").innerText = "Start Microphone";
+            document.getElementById("toggleBtn").className = "";
+            document.getElementById("badge").style.display = "none";
+        }
+
+        // ---------- Audio File Testing ----------
+        async function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (isStreaming) stopStreaming();
+            if (isFilePlaying) stopFileTest();
+
+            const fileBtn = document.getElementById("fileBtn");
+            fileBtn.innerText = "Decoding file...";
+            fileBtn.disabled = true;
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const tempContext = new (window.AudioContext || window.webkitAudioContext)();
+                const audioBuffer = await tempContext.decodeAudioData(arrayBuffer);
+                tempContext.close();
+
+                // Get single channel float data
+                const rawChannel = audioBuffer.getChannelData(0);
+                const resampled = downsampleBuffer(rawChannel, audioBuffer.sampleRate, 16000);
+
+                ws = initWebSocket(() => {
+                    isFilePlaying = true;
+                    fileBtn.innerText = "Stop File Test";
+                    fileBtn.className = "stop";
+                    fileBtn.disabled = false;
+                    fileBtn.onclick = stopFileTest;
+                    document.getElementById("badge").style.display = "inline-block";
+
+                    // Stream 0.25s chunks (4000 samples @ 16kHz)
+                    const chunkSize = 4000;
+                    let cursor = 0;
+
+                    filePlaybackInterval = setInterval(() => {
+                        if (!isFilePlaying || !ws || ws.readyState !== WebSocket.OPEN) {
+                            stopFileTest();
+                            return;
+                        }
+
+                        if (cursor >= resampled.length) {
+                            clearInterval(filePlaybackInterval);
+                            fileBtn.innerText = "Test Audio File";
+                            fileBtn.className = "file-btn";
+                            fileBtn.onclick = () => document.getElementById('audioFileInput').click();
+                            fileBtn.disabled = false;
+                            isFilePlaying = false;
+                            return;
+                        }
+
+                        const chunk = resampled.subarray(cursor, cursor + chunkSize);
+                        cursor += chunkSize;
+
+                        const pcm16 = new Int16Array(chunk.length);
+                        for (let i = 0; i < chunk.length; i++) {
+                            let s = Math.max(-1, Math.min(1, chunk[i]));
+                            pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                        }
+
+                        ws.send(pcm16.buffer);
+                        sentCount++;
+                    }, 250);
+                });
+            } catch (err) {
+                alert("Error processing audio file: " + err.message);
+                fileBtn.innerText = "Test Audio File";
+                fileBtn.className = "file-btn";
+                fileBtn.disabled = false;
+                fileBtn.onclick = () => document.getElementById('audioFileInput').click();
+            }
+        }
+
+        function stopFileTest() {
+            if (filePlaybackInterval) clearInterval(filePlaybackInterval);
+            isFilePlaying = false;
+            if (ws) ws.close();
+
+            const fileBtn = document.getElementById("fileBtn");
+            fileBtn.innerText = "Test Audio File";
+            fileBtn.className = "file-btn";
+            fileBtn.onclick = () => document.getElementById('audioFileInput').click();
+            fileBtn.disabled = false;
+            document.getElementById("badge").style.display = "none";
+            document.getElementById("audioFileInput").value = "";
+        }
+
+        // ---------- UI Update ----------
+        function updateUI(data) {
+            const prob = data.spoof_probability;
+            const pct = (prob * 100).toFixed(1);
+            const badge = document.getElementById("badge");
+            const meter = document.getElementById("meter");
+
+            document.getElementById("stats").innerText = `Audio Level: ${data.rms_energy} | Packets Sent: ${sentCount} | Packets Recv: ${recvCount}`;
+
+            if (data.model_scores && Object.keys(data.model_scores).length > 0) {
+                const parts = Object.entries(data.model_scores).map(
+                    ([name, score]) => `${name}: ${(score * 100).toFixed(1)}%`
+                );
+                document.getElementById("modelBreakdown").innerText = parts.join("  |  ");
+            }
+
+            updateCalibrationPanel(data);
+
+            if (data.status === "STANDBY") {
+                document.getElementById("scoreLabel").innerText = `Spoof Risk: ${pct}%`;
+                document.getElementById("actionLabel").innerText = `Action: Waiting for speech...`;
+                badge.className = "badge silence";
+                badge.innerText = "LISTENING / SILENCE";
+                meter.style.width = `${pct}%`;
+                meter.style.background = "#475569";
+                return;
+            }
+
+            if (data.status === "PAUSED") {
+                document.getElementById("actionLabel").innerText = `Action: Paused (holding last reading)`;
+                badge.className = "badge paused";
+                badge.innerText = "PAUSED";
+                return;
+            }
+
+            if (data.status === "NOISE_IGNORED") {
+                document.getElementById("actionLabel").innerText = `Action: Ignoring noise burst (holding last reading)`;
+                badge.className = "badge paused";
+                badge.innerText = "NOISE IGNORED";
+                return;
+            }
+
+            document.getElementById("scoreLabel").innerText = `Spoof Risk: ${pct}%`;
+            document.getElementById("actionLabel").innerText = `Action: ${data.recommended_action}`;
+            meter.style.width = `${pct}%`;
+
+            if (data.status === "CLONED_VOICE_DETECTED") {
+                badge.className = "badge cloned";
+                badge.innerText = "🚨 CLONED VOICE DETECTED";
+                meter.style.background = "#ef4444";
+            } else if (data.status === "SUSPICIOUS") {
+                badge.className = "badge suspicious";
+                badge.innerText = "⚠️ SUSPICIOUS AUDIO";
+                meter.style.background = "#f59e0b";
+            } else {
+                badge.className = "badge authentic";
+                badge.innerText = "✅ AUTHENTIC HUMAN VOICE";
+                meter.style.background = "#22c55e";
+            }
+        }
+
+        function updateCalibrationPanel(data) {
+            const rms = data.rms_energy;
+            const threshold = data.silence_threshold;
+            const isPausedOrStandby = (data.status === "PAUSED" || data.status === "STANDBY");
+            const isNoiseIgnored = (data.status === "NOISE_IGNORED");
+
+            const fillPct = Math.min(100, (rms / CALIB_BAR_MAX) * 100);
+            document.getElementById("calibBarFill").style.width = `${fillPct}%`;
+            document.getElementById("calibBarFill").style.background = isNoiseIgnored
+                ? "#f97316"
+                : (isPausedOrStandby ? "#475569" : "#38bdf8");
+
+            const thresholdPct = Math.min(100, (threshold / CALIB_BAR_MAX) * 100);
+            document.getElementById("calibThresholdMarker").style.left = `${thresholdPct}%`;
+
+            document.getElementById("calibLiveRms").innerText = rms.toFixed(4);
+            document.getElementById("calibThresholdVal").innerText = threshold.toFixed(4);
+
+            if (isNoiseIgnored) {
+                // no-op
+            } else if (isPausedOrStandby) {
+                if (noiseFloorMax === null || rms > noiseFloorMax) {
+                    noiseFloorMax = rms;
+                    document.getElementById("calibNoiseFloor").innerText = noiseFloorMax.toFixed(4);
+                }
+            } else {
+                if (speechMinObserved === null || rms < speechMinObserved) {
+                    speechMinObserved = rms;
+                    document.getElementById("calibSpeechMin").innerText = speechMinObserved.toFixed(4);
+                }
+            }
+
+            const suggestionEl = document.getElementById("calibSuggestion");
+            if (noiseFloorMax !== null && speechMinObserved !== null) {
+                if (speechMinObserved <= noiseFloorMax) {
+                    suggestionEl.style.color = "#f87171";
+                    suggestionEl.innerText = "⚠️ Speech energy overlaps noise floor — try speaking clearer or reducing background noise.";
+                } else {
+                    const suggested = (noiseFloorMax + speechMinObserved) / 2;
+                    suggestionEl.style.color = "#4ade80";
+                    suggestionEl.innerText = `💡 Suggested threshold ≈ ${suggested.toFixed(4)} (currently ${threshold.toFixed(4)})`;
+                }
+            }
+        }
+    </script>
+</body>
+</html>
